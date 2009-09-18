@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from os.path import *
+from PyQt4.Qt import *
 from PyQt4.QtCore import *
 
 class Playerhelper:
