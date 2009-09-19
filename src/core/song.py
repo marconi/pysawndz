@@ -14,7 +14,11 @@ class Song(object):
         self.__id = id
         
         if id == None:
+            #if not id, then its a new song, save it
             self.__saveSong()
+        else:
+            #else, just update it
+            self.__updateSong()
 
     def getId(self):
         return self.__id
@@ -100,10 +104,20 @@ class Song(object):
                     print query.lastError().text()
         else:
             print query.lastError().text()
-        
+    
+    def __updateSong(self):
+        query  = QSqlQuery(db)
+        artist_id = self.__getSongArtist()
+        sql = QString("UPDATE songs SET title = '%1', duration=%2, artist_id=%3, genre_id=%4, album_id=%5 WHERE id=%6") \
+            .arg(self.__title).arg(self.__duration).arg(artist_id).arg(self.__getSongGenre()).arg(self.__getSongAlbum(artist_id)) \
+            .arg(self.__id)
+
+        if not query.exec_(sql):
+            print query.lastError().text()
 
 if __name__ == "__main__":
     #testsuite
+
     db = QSqlDatabase("QMYSQL")
     db.setDatabaseName("pysawndz")
     db.setUserName("marc")
@@ -113,11 +127,7 @@ if __name__ == "__main__":
         print db.lastError().text()
         sys.exit(1)
     
-    song = Song(title="Du Hast", duration="12345", artist="Rammstein", genre="Rock", album="Berlin")
-    print song.getId()
-    song = Song(title="Tequero Puta", duration="54321", artist="Rammstein", genre="Rock", album="Berlin")
-    print song.getId()
-    song = Song(title="Fuer Fuer", duration="2345", artist="Ramstein", genre="Rock", album="Berlin")
+    song = Song(id=1, title="Du Hast", duration="12345", artist="Ramstein", genre="Rock", album="Berlin")
     print song.getId()
     
         
