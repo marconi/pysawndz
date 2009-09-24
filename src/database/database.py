@@ -49,6 +49,7 @@ class Db(object):
             return query.lastInsertId().toInt()[0]
         else:
             print query.lastError().text()
+            return False
     
     @staticmethod
     def select(sqlTable=None, sqlFields=[], sqlWhere={}, sqlStart=None, sqlOffset=None):
@@ -89,6 +90,7 @@ class Db(object):
         if query.size() > 0:
             return query
         else:
+            print query.lastError().text()
             return False
         
     @staticmethod
@@ -130,6 +132,7 @@ class Db(object):
         if query.exec_(sql):
             return query.numRowsAffected()
         else:
+            print query.lastError().text()
             return False
         
     @staticmethod
@@ -163,6 +166,22 @@ class Db(object):
         if query.exec_(sql):
             return query.numRowsAffected()
         else:
+            print query.lastError().text()
+            return False
+        
+    @staticmethod
+    def execute(sql):
+        
+        #initiate an instance if there's none
+        if Db.__db == None:
+            Db.__getInstance()
+        
+        query  = QSqlQuery(Db.__db)
+        
+        if query.exec_(sql):
+            return query
+        else:
+            print query.lastError().text()
             return False
         
 if __name__ == "__main__":
@@ -177,4 +196,8 @@ if __name__ == "__main__":
 #    print Db.update("albums", {"name": "Paramore", "album_date": "2009-01-01"})
     
 #    print Db.delete("albums")
-    pass
+    result = Db.execute("SELECT s.title, a.name FROM songs as s, artists as a WHERE a.id = s.artist_id AND s.id = 2")
+    if result:
+        while result.next():
+            print result.value(0).toString()
+            print result.value(1).toString()

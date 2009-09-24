@@ -30,13 +30,13 @@ class Songs(object):
 if __name__ == "__main__":
     #testsuite
     songs = Songs()
-    song1 = Song(id=1, title="Du Hastx1", duration="12345", artist="Ramstein", genre="Rock", album="Berlin")
+    song1 = Song(id=1)
     songs.addSong(song1)
 
-    song2 = Song(id=2, title="Du Hastx2", duration="12345", artist="Ramstein", genre="Rock", album="Berlin")
+    song2 = Song(id=2)
     songs.addSong(song2)
     
     for s in songs:
-        print str(s.getId()) + " : " + s.getTitle()
+        print str(s) + "\n"
         
     

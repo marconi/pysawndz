@@ -3,6 +3,7 @@
 import sys
 from PyQt4.QtCore import *
 from PyQt4.QtSql import *
+from database.database import Db
 
 class Song(object):
     
@@ -40,97 +41,108 @@ class Song(object):
         return self.__genre
     
     def __saveSong(self):
-        query  = QSqlQuery(db)
-        
-        query.prepare("INSERT INTO songs(title, duration, artist_id, genre_id, album_id) VALUES(?, ?, ?, ?, ?)")
-        query.addBindValue(QVariant(self.__title))
-        query.addBindValue(QVariant(self.__duration))
+
         artist_id = self.__getSongArtist()
-        query.addBindValue(QVariant(artist_id))
-        query.addBindValue(QVariant(self.__getSongGenre()))
-        query.addBindValue(QVariant(self.__getSongAlbum(artist_id)))                         
-        if query.exec_():
-            self.__id = query.lastInsertId().toInt()[0]
-        else:
-            print query.lastError().text()
+        
+        param = {
+            "title": self.__title,
+            "duration": self.__duration,
+            "artist_id": artist_id,
+            "genre_id": self.__getSongGenre(),
+            "album_id": self.__getSongAlbum(artist_id)
+        }
+        
+        self.__id = Db.insert("songs", param)
 
     def __getSongArtist(self):
-        query  = QSqlQuery(db)
-        sql = QString("SELECT id FROM artists WHERE name = '%1'").arg(self.__artist)
-        if query.exec_(sql):
-            if query.size() > 0 and query.next():
-                artist_id = query.value(0).toInt()[0]
-                return artist_id
+        
+        if not self.__artist == None:
+            query = Db.select("artists", ["id"], {"name": self.__artist})
+            if query and query.size() > 0 and query.next():
+                return query.value(0).toInt()[0]
             else:
-                query.prepare("INSERT INTO artists(name) VALUES(?)")
-                query.addBindValue(QVariant(self.__artist))
-                if query.exec_():
-                    return query.lastInsertId().toInt()[0]
-                else:
-                    print query.lastError().text()
+                return Db.insert("artists", {"name": self.__artist})
         else:
-            print query.lastError().text()
+            query = Db.execute("SELECT a.id FROM artists as a, songs as s WHERE s.artist_id = a.id AND s.id = %d" % (self.__id))
+            if query and query.next():
+                return query.value(0).toInt()[0]
             
     def __getSongGenre(self):
-        query  = QSqlQuery(db)
-        sql = QString("SELECT id FROM genres WHERE name = '%1'").arg(self.__genre)
-        if query.exec_(sql):
-            if query.size() > 0 and query.next():
-                genre_id = query.value(0).toInt()[0]
-                return genre_id
+        
+        if not self.__genre == None:
+            query = Db.select("genres", ["id"], {"name": self.__genre})
+            if query and query.size() > 0 and query.next():
+                return query.value(0).toInt()[0]
             else:
-                query.prepare("INSERT INTO genres(name) VALUES(?)")
-                query.addBindValue(QVariant(self.__genre))
-                if query.exec_():
-                    return query.lastInsertId().toInt()[0]
-                else:
-                    print query.lastError().text()
+                return Db.insert("genres", {"name": self.__genre})
         else:
-            print query.lastError().text()
+            query = Db.execute("SELECT g.id FROM genres as g, songs as s WHERE s.genre_id = g.id AND s.id = %d" % (self.__id))
+            if query and query.next():
+                return query.value(0).toInt()[0]
             
     def __getSongAlbum(self, artist_id):
-        query  = QSqlQuery(db)
-        sql = QString("SELECT id FROM albums WHERE name = '%1' AND artist_id = %2").arg(self.__album).arg(artist_id)
-        if query.exec_(sql):
-            if query.size() > 0 and query.next():
-                album_id = query.value(0).toInt()[0]
-                return album_id
+        
+        if not self.__album == None:
+            query = Db.select("albums", ["id"], {"name": self.__album, "artist_id": artist_id})
+            if query and query.size() > 0 and query.next():
+                return query.value(0).toInt()[0]
             else:
-                query.prepare("INSERT INTO albums(name, artist_id) VALUES(?, ?)")
-                query.addBindValue(QVariant(self.__album))
-                query.addBindValue(QVariant(artist_id))
-                if query.exec_():
-                    return query.lastInsertId().toInt()[0]
-                else:
-                    print query.lastError().text()
+                return Db.insert("albums", {"name": self.__album, "artist_id": artist_id})
         else:
-            print query.lastError().text()
+            query = Db.execute("SELECT a.id FROM albums as a, songs as s WHERE s.album_id = a.id AND s.id = %d" % (self.__id))
+            if query and query.next():
+                return query.value(0).toInt()[0]
     
     def __updateSong(self):
-        query  = QSqlQuery(db)
-        artist_id = self.__getSongArtist()
-        sql = QString("UPDATE songs SET title = '%1', duration=%2, artist_id=%3, genre_id=%4, album_id=%5 WHERE id=%6") \
-            .arg(self.__title).arg(self.__duration).arg(artist_id).arg(self.__getSongGenre()).arg(self.__getSongAlbum(artist_id)) \
-            .arg(self.__id)
+        
+        param = {}
+        query = Db.select("songs", ["title", "duration", "artist_id", "genre_id", "album_id"], {"id": self.__id})
+        if query and query.next():
+            if self.__title == None:
+                self.__title = str(query.value(0).toString())
+            else:
+                param["title"] = self.__title
+            
+            if self.__duration == None:
+                self.__duration = query.value(1).toInt()[0]
+            else:
+                param["duration"] = self.__duration
+            
+            #only update song's artist and album if they are both present
+            if not self.__artist == None and not self.__album == None:
+                param["artist_id"] = self.__getSongArtist()
+                param["album_id"] = self.__getSongAlbum(param["artist_id"])
+            else:
+                #else, just load defaults
+                self.__artist = query.value(2).toInt()[0]
+                self.__album = query.value(4).toInt()[0]
+            
+            if self.__genre == None:
+                self.__genre = query.value(3).toInt()[0]
+            else:
+                param["genre_id"] = self.__getSongGenre()
+        
+        Db.update("songs", param, {"id": self.__id})
+        
+    def __str__(self):
 
-        if not query.exec_(sql):
-            print query.lastError().text()
+        out = ""
+        query = Db.execute("SELECT a.name as artist, al.name as album, g.name as genre FROM artists as a, albums as al, genres as g WHERE g.id = %d AND a.id = %d AND al.id = %d" % \
+                           (self.__genre, self.__artist, self.__album))
+        if query and query.next():
+            out = "ID: %d\nTitle: %s\nDuration: %d\nArtist: %s\nAlbum: %s\nGenre: %s" % \
+                (self.__id, self.__title, self.__duration, query.value(0).toString(), query.value(1).toString(), query.value(2).toString())
+        else:
+            out = "ID: %d\nTitle: %s\nDuration: %d" % \
+                (self.__id, self.__title, self.__duration)
+
+        return out
 
 if __name__ == "__main__":
     #testsuite
 
-    db = QSqlDatabase("QMYSQL")
-    db.setDatabaseName("pysawndz")
-    db.setUserName("marc")
-    db.setPassword("admin")
-    db.setHostName("127.0.0.1")
-    if not db.open():
-        print db.lastError().text()
-        sys.exit(1)
-    
-    song = Song(id=1, title="Du Hast", duration="12345", artist="Ramstein", genre="Rock", album="Berlin")
-    print song.getId()
-    
+    s = Song(id=2, duration=666, title="duhhahah")
+    print str(s)
         
     
         
