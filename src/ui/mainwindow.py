@@ -1,11 +1,10 @@
-#!/usr/bin/env python
-
 import sys
 from PyQt4 import *
 from PyQt4.QtGui import *
 from PyQt4.QtCore import *
 from PyQt4.phonon import *
 from utils.helpers import *
+from core.songs import *
 
 class Mainwindow(QMainWindow):
 
@@ -20,11 +19,17 @@ class Mainwindow(QMainWindow):
                       "previous":"images/previous.png",
                       "all_songs":"images/all_songs.png",
                       "playlist":"images/playlist.png"}
+        
+        self.sources = Songs()
 
         self.setupHelpers()
         self.setupAudioObjects()
         self.setupUi()
         self.setupSignals()
+        
+        self.__current_sid = 0
+        
+        #TODO: load all songs from db and display as All Songs
 
     def setupHelpers(self):
         self.phelper = Playerhelper()
@@ -86,7 +91,7 @@ class Mainwindow(QMainWindow):
         self.musicTable.horizontalHeader().setStretchLastSection(True)
         self.musicTable.setSelectionMode(QAbstractItemView.SingleSelection)
         self.musicTable.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.musicTable.setColumnWidth(0, 220)
+        self.musicTable.setColumnWidth(0, 320)
         self.musicTable.setColumnWidth(1, 70)
 
         #setup lcdtimer
@@ -146,12 +151,33 @@ class Mainwindow(QMainWindow):
         self.connect(self.playbtn, SIGNAL("triggered()"), self.mediaObject, SLOT("play()"))
         self.connect(self.stopbtn, SIGNAL("triggered()"), self.mediaObject, SLOT("stop()"))
         self.connect(self.pausebtn, SIGNAL("triggered()"), self.mediaObject, SLOT("pause()"))
+        
+        self.connect(self.previousbtn, SIGNAL("triggered()"), self.movePrevious)
+        self.connect(self.nextbtn, SIGNAL("triggered()"), self.moveNext)
+        
         self.connect(self.musicTable, SIGNAL("cellDoubleClicked(int, int)"), self.cellDoubleClicked)
 
         self.connect(self.mediaObject, SIGNAL("tick(qint64)"), self.tick)
         self.connect(self.mediaObject, SIGNAL("stateChanged(Phonon::State, Phonon::State)"), self.stateChanged)
         self.connect(self.mediaObject, SIGNAL("aboutToFinish()"), self.aboutToFinish)
         self.connect(self.mediaObject, SIGNAL("currentSourceChanged(const Phonon::MediaSource &)"), self.sourceChanged);
+        
+    def movePrevious(self):
+        current_index = self.sources.getSongIndex(self.sources.getSong(self.__current_sid))
+        previous_song = self.sources.getByIndex(current_index - 1)
+        if not previous_song == False:
+            self.setCurrentSong(previous_song)
+            self.musicTable.setCurrentCell(current_index - 1, 0)
+            self.mediaObject.play()
+            
+    
+    def moveNext(self):
+        current_index = self.sources.getSongIndex(self.sources.getSong(self.__current_sid))
+        next_song = self.sources.getByIndex(current_index + 1)
+        if not next_song == False:
+            self.setCurrentSong(next_song)
+            self.musicTable.setCurrentCell(current_index + 1, 0)
+            self.mediaObject.play()
 
     def showOpenDialog(self):
         filenames = QStringList()
@@ -165,11 +191,25 @@ class Mainwindow(QMainWindow):
 
         self.mediaObject.clearQueue()
         if len(filenames) > 0:
-            self.source = []
-            self.setCurrentSong(Phonon.MediaSource(filenames[0]))
             for f in filenames:
+                
                 source = Phonon.MediaSource(f)
-                self.sources.append(source)
+                
+                self.mediaObject.setCurrentSource(source)
+                metaData = self.mediaObject.metaData()
+                metaData = self.phelper.cmapToPyDict(metaData)
+                
+                if metaData["TITLE"] == "":
+                    metaData["TITLE"] = self.phelper.getFileName(f)
+                
+                newSong = Song(title=metaData["TITLE"], artist=metaData["ARTIST"],
+                               album=metaData["ALBUM"], genre=metaData["GENRE"], path=f,
+                               duration=self.mediaObject.totalTime())
+                
+                if filenames.indexOf(f) == 0:
+                    self.setCurrentSong(newSong)
+                
+                self.sources.addSong(newSong)
 
             self.displaySongs()
 
@@ -196,75 +236,80 @@ class Mainwindow(QMainWindow):
     def tick(self, time):
         self.timeLcd.display(self.calculateSongTime(time))
 
-    def calculateSongTime(self, time, playing = True):
+    def calculateSongTime(self, time, playing = True, customTime=None):
         if playing:
             remaining = self.mediaObject.totalTime() - time
         else:
-            remaining = self.mediaObject.totalTime()
+            if customTime == None:
+                remaining = self.mediaObject.totalTime()
+            else:
+                remaining = customTime
         displayTime = QTime(0, (remaining / 60000) % 60, (remaining / 1000) % 60)
         return displayTime.toString("mm:ss")
 
     def setCurrentSong(self, song):
-        self.setWindowTitle(self.phelper.getFileName(song.fileName()))
-        self.mediaObject.setCurrentSource(song)
+        source = Phonon.MediaSource(song.getPath())
+        self.setWindowTitle(self.phelper.getFileName(source.fileName()))
+        self.mediaObject.setCurrentSource(source)
+        
+        self.__current_sid = song.getId()
 
     def displaySongs(self):
-
-        self.ui.musicTable.clearContents()
+        
+        self.musicTable.clearContents()
 
         if len(self.sources) > 0:
 
             for song in self.sources:
-
-                self.mediaObject.setCurrentSource(song)
-                metaData = self.mediaObject.metaData()
-                metaData = self.structHelper.cmapToPyDict(metaData)
+                
+                currentRow = self.sources.getSongIndex(song)
+                self.musicTable.removeRow(currentRow)
 
                 sansFont = QFont("Helvetica [Cronyx]", 12);
 
-                if metaData["TITLE"] == "":
-                    title = self.structHelper.getFileName(song)
-                else:
-                    title = metaData["TITLE"]
-
-                titleItem = QTableWidgetItem(title)
+                titleItem = QTableWidgetItem(song.getTitle())
                 titleItem.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
                 titleItem.setFont(sansFont)
 
-                timeItem = QTableWidgetItem(self.calculateSongTime(None, False))
+                timeItem = QTableWidgetItem(self.calculateSongTime(None, False, song.getDuration()))
                 timeItem.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
                 timeItem.setFont(sansFont)
 
-                artistItem = QTableWidgetItem(metaData["ARTIST"])
+                artistItem = QTableWidgetItem(song.getArtist())
                 artistItem.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
                 artistItem.setFont(sansFont)
 
-                albumItem = QTableWidgetItem(metaData["ALBUM"])
+                albumItem = QTableWidgetItem(song.getAlbum())
                 albumItem.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
                 albumItem.setFont(sansFont)
 
-                genreItem = QTableWidgetItem(metaData["GENRE"])
+                genreItem = QTableWidgetItem(song.getGenre())
                 genreItem.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
                 genreItem.setFont(sansFont)
+                
+                self.musicTable.insertRow(currentRow)
+                self.musicTable.setItem(currentRow, 0, titleItem)
+                self.musicTable.setItem(currentRow, 1, timeItem)
+                self.musicTable.setItem(currentRow, 2, artistItem)
+                self.musicTable.setItem(currentRow, 3, albumItem)
+                self.musicTable.setItem(currentRow, 4, genreItem)
 
-                currentRow = self.sources.index(song)
-
-                self.ui.musicTable.insertRow(currentRow)
-                self.ui.musicTable.setItem(currentRow, 0, titleItem)
-                self.ui.musicTable.setItem(currentRow, 1, timeItem)
-                self.ui.musicTable.setItem(currentRow, 2, artistItem)
-                self.ui.musicTable.setItem(currentRow, 3, albumItem)
-                self.ui.musicTable.setItem(currentRow, 4, genreItem)
-
-                self.ui.musicTable.setRowHeight(currentRow, 20)
-
-            self.setCurrentSong(self.sources[0])
+                self.musicTable.setRowHeight(currentRow, 20)
+            
+            currentSong = self.sources.getByIndex(0)
+            if currentSong:
+                self.setCurrentSong(currentSong)
 
     def aboutToFinish(self):
-        source = self.mediaObject.currentSource()
-        index = self.sources.index(source)
-        if (index + 1) < len(self.sources):
-            self.mediaObject.enqueue(self.sources[index + 1])
+        #source = self.mediaObject.currentSource()
+        
+        current_song = self.sources.getSong(self.__current_sid)
+        current_index = self.sources.getSongIndex(current_song)
+
+        if (current_index + 1) < len(self.sources):
+            next_song = self.sources.getByIndex(current_index + 1)
+            source = Phonon.MediaSource(next_song.getPath())
+            self.mediaObject.enqueue(source)
 
     def sourceChanged(self, source):
         if source in self.sources:
@@ -275,8 +320,10 @@ class Mainwindow(QMainWindow):
     def cellDoubleClicked(self, row, column):
         self.mediaObject.stop()
         self.mediaObject.clearQueue()
-        self.mediaObject.setCurrentSource(self.sources[row])
-        self.mediaObject.play()
+        song = self.sources.getByIndex(row)
+        if song:
+            self.setCurrentSong(song)
+            self.mediaObject.play()
 
 #test suite for mainwindow
 if __name__ == "__main__":

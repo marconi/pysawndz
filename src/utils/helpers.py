@@ -1,8 +1,5 @@
-#!/usr/bin/env python
-
 from os.path import *
 from PyQt4.Qt import *
-from PyQt4.QtCore import *
 
 class Playerhelper:
     
@@ -16,5 +13,4 @@ class Playerhelper:
     
     def getFileName(self, filePath):
         fileName = QString(basename(str(filePath)))
-        print fileName
         return fileName.left(fileName.lastIndexOf("."))

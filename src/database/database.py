@@ -1,4 +1,3 @@
-
 import sys
 from PyQt4.QtGui import *
 from PyQt4.QtCore import *
@@ -69,19 +68,21 @@ class Db(object):
         else:
             #else select all fields
             sql = "SELECT * FROM %s" % (sqlTable)
-        
+
         #check if theres a where
         if isinstance(sqlWhere, dict) and len(sqlWhere) > 0:
             sqlwhere = []
             whereCounter = 1
             for k, v in sqlWhere.items():
-                if isinstance(v, str):
+                if isinstance(v, tuple):
+                    v = v[0]
+                if isinstance(v, str) or isinstance(v, QString):
                     #if its a string, add quotes
                     v = "'%s'" % (v)
                 sqlwhere.append(str(QString("%s = %s" % (k, "%" + str(whereCounter))).arg(v)))
                 whereCounter += 1
             sql += " WHERE " + " AND ".join(sqlwhere)
-        
+
         #check if offset/limit is present
         if not sqlStart == None and not sqlOffset == None:
             sql += " LIMIT %d, %d" % (sqlStart, sqlOffset)
@@ -160,8 +161,6 @@ class Db(object):
                 sqlwhere.append(str(QString("%s = %s" % (k, "%" + str(whereCounter))).arg(v)))
                 whereCounter += 1
             sql += " WHERE " + " AND ".join(sqlwhere)
-            
-        print sql
         
         if query.exec_(sql):
             return query.numRowsAffected()

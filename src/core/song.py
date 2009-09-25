@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 import sys
 from PyQt4.QtCore import *
 from PyQt4.QtSql import *
@@ -7,20 +5,18 @@ from database.database import Db
 
 class Song(object):
     
-    def __init__(self, id=None, title=None, duration=None, artist=None, album=None, genre=None):
+    def __init__(self, id=None, title=None, duration=None, artist=None, album=None, genre=None, path=None):
         self.__title = title
         self.__duration = duration
         self.__artist = artist
         self.__album = album
         self.__genre = genre
         self.__id = id
-        
-        if id == None:
-            #if not id, then its a new song, save it
-            self.__saveSong()
-        else:
-            #else, just update it
-            self.__updateSong()
+        self.__path = path
+        self.dirty = False
+
+        if not id == None:
+            self.updateSong()
 
     def getId(self):
         return self.__id
@@ -40,7 +36,10 @@ class Song(object):
     def getGenre(self):
         return self.__genre
     
-    def __saveSong(self):
+    def getPath(self):
+        return self.__path
+    
+    def saveSong(self):
 
         artist_id = self.__getSongArtist()
         
@@ -49,7 +48,8 @@ class Song(object):
             "duration": self.__duration,
             "artist_id": artist_id,
             "genre_id": self.__getSongGenre(),
-            "album_id": self.__getSongAlbum(artist_id)
+            "album_id": self.__getSongAlbum(artist_id),
+            "path": self.__path
         }
         
         self.__id = Db.insert("songs", param)
@@ -93,10 +93,10 @@ class Song(object):
             if query and query.next():
                 return query.value(0).toInt()[0]
     
-    def __updateSong(self):
+    def updateSong(self):
         
         param = {}
-        query = Db.select("songs", ["title", "duration", "artist_id", "genre_id", "album_id"], {"id": self.__id})
+        query = Db.select("songs", ["title", "duration", "artist_id", "genre_id", "album_id", "path"], {"id": self.__id})
         if query and query.next():
             if self.__title == None:
                 self.__title = str(query.value(0).toString())
@@ -107,6 +107,11 @@ class Song(object):
                 self.__duration = query.value(1).toInt()[0]
             else:
                 param["duration"] = self.__duration
+                
+            if self.__path == None:
+                self.__path = str(query.value(5).toString())
+            else:
+                param["path"] = self.__path
             
             #only update song's artist and album if they are both present
             if not self.__artist == None and not self.__album == None:
@@ -122,7 +127,10 @@ class Song(object):
             else:
                 param["genre_id"] = self.__getSongGenre()
         
-        Db.update("songs", param, {"id": self.__id})
+            Db.update("songs", param, {"id": self.__id})
+            
+        else:
+            self.dirty = True
         
     def __str__(self):
 
@@ -130,19 +138,19 @@ class Song(object):
         query = Db.execute("SELECT a.name as artist, al.name as album, g.name as genre FROM artists as a, albums as al, genres as g WHERE g.id = %d AND a.id = %d AND al.id = %d" % \
                            (self.__genre, self.__artist, self.__album))
         if query and query.next():
-            out = "ID: %d\nTitle: %s\nDuration: %d\nArtist: %s\nAlbum: %s\nGenre: %s" % \
-                (self.__id, self.__title, self.__duration, query.value(0).toString(), query.value(1).toString(), query.value(2).toString())
+            out = "ID: %d\nTitle: %s\nDuration: %d\nArtist: %s\nAlbum: %s\nGenre: %s\nPath: %s" % \
+                (self.__id, self.__title, self.__duration, query.value(0).toString(), query.value(1).toString(), query.value(2).toString(), self.__path)
         else:
-            out = "ID: %d\nTitle: %s\nDuration: %d" % \
-                (self.__id, self.__title, self.__duration)
+            out = "ID: %d\nTitle: %s\nDuration: %d\nPath: %s" % \
+                (self.__id, self.__title, self.__duration, self.__path)
 
         return out
 
 if __name__ == "__main__":
     #testsuite
 
-    s = Song(id=2, duration=666, title="duhhahah")
-    print str(s)
-        
+    s = Song(title="sample", artist="aaa", album="ccc", genre="eee")
+    s.saveSong()
+    print s.getId()
     
         
