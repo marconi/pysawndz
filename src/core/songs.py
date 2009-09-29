@@ -47,7 +47,7 @@ class Songs(object):
     def __iter__(self):
         for s in self.songs:
             yield s
-            
+
     def getByIndex(self, index=None):
         if not index == None and index < len(self.songs) and index >= 0: 
             return self.songs[index]
@@ -56,6 +56,12 @@ class Songs(object):
     def getSongIndex(self, song):
         if song in self.songs:
             return self.songs.index(song)
+        return False
+    
+    def getSongByPath(self, path):
+        for song in self.songs:
+            if path == song.getPath():
+                return song
         return False
 
 if __name__ == "__main__":
