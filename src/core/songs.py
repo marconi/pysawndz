@@ -18,9 +18,12 @@ class Songs(object):
                         if song.getPath() == newSong.getPath():
                             songInList = True
                     if not songInList:
-                        loadedSong = Song(id=query.value(0).toInt())
-                        if not loadedSong.dirty:
-                            self.songs.append(loadedSong)
+                        if not newSong.dirty:
+                            self.songs.append(newSong)
+                        else:
+                            loadedSong = Song(id=query.value(0).toInt()[0])
+                            if not loadedSong.dirty:
+                                self.songs.append(loadedSong)
                 else:
                     newSong.saveSong()
                     if not newSong.dirty:

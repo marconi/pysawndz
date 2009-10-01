@@ -5,6 +5,7 @@ from PyQt4.QtCore import *
 from PyQt4.phonon import *
 from utils.helpers import *
 from core.songs import *
+from database.database import Db
 
 class Mainwindow(QMainWindow):
 
@@ -29,7 +30,27 @@ class Mainwindow(QMainWindow):
         
         self.__current_sid = 0
         
-        #TODO: load all songs from db and display as All Songs
+        self.loadAllSongs()
+        
+    def loadAllSongs(self):
+        sql = "SELECT s.id, s.title, s.path, s.duration, a.name as artist, al.name as album, g.name as genre FROM songs as s \
+                INNER JOIN artists as a ON a.id = s.artist_id \
+                INNER JOIN albums as al ON al.id = s.album_id \
+                INNER JOIN genres as g ON g.id = s.genre_id ORDER BY s.title ASC"
+        query = Db.execute(sql)
+        if query:
+            while query.next():
+                
+                song = Song(id=query.value(0).toInt()[0],
+                            title=query.value(1).toString(),
+                            path=query.value(2).toString(),
+                            duration=query.value(3).toInt()[0],
+                            artist=query.value(4).toString(),
+                            album=query.value(5).toString(),
+                            genre=query.value(6).toString())
+                
+                self.sources.addSong(song)
+            self.displaySongs()
 
     def setupHelpers(self):
         self.phelper = Playerhelper()
@@ -263,6 +284,8 @@ class Mainwindow(QMainWindow):
         if len(self.sources) > 0:
             
             for song in self.sources:
+                
+                print str(song)
                 
                 sansFont = QFont("Helvetica [Cronyx]", 12);
 

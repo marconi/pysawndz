@@ -41,12 +41,15 @@ class Db(object):
         query  = QSqlQuery(Db.__db)
         query.prepare(sql)
         for k, v in sqlData.items():
+            if isinstance(v, str) or isinstance(v, QString):
+                v = '%s' % (v)
             #bind each item to be inserted
             query.bindValue(":" + k, QVariant(v))
-
+        
         if query.exec_():
             return query.lastInsertId().toInt()[0]
         else:
+            print query.lastQuery()
             print query.lastError().text()
             return False
     
@@ -78,8 +81,8 @@ class Db(object):
                     v = v[0]
                 if isinstance(v, str) or isinstance(v, QString):
                     #if its a string, add quotes
-                    v = "'%s'" % (v)
-                sqlwhere.append(str(QString("%s = %s" % (k, "%" + str(whereCounter))).arg(v)))
+                    v = '"%s"' % (v)
+                sqlwhere.append(str(QString('%s = %s' % (k, "%" + str(whereCounter))).arg(v)))
                 whereCounter += 1
             sql += " WHERE " + " AND ".join(sqlwhere)
 
@@ -91,6 +94,7 @@ class Db(object):
         if query.size() > 0:
             return query
         else:
+            print query.lastQuery()
             print query.lastError().text()
             return False
         
@@ -110,10 +114,12 @@ class Db(object):
         sqlset = []
         setCounter = 1
         for k, v in sqlData.items():
-            if isinstance(v, str):
+            if isinstance(v, tuple):
+                    v = v[0]
+            if isinstance(v, str) or isinstance(v, QString):
                 #if its a string, add quotes
-                v = "'%s'" % (v)
-            sqlset.append(str(QString("%s = %s" % (k, "%" + str(setCounter))).arg(v)))
+                v = '"%s"' % (v)
+            sqlset.append(str(QString('%s = %s' % (k, "%" + str(setCounter))).arg(v)))
             setCounter += 1
         sqlItems = ", ".join(sqlset)
 
@@ -124,15 +130,18 @@ class Db(object):
             sqlwhere = []
             whereCounter = 1
             for k, v in sqlWhere.items():
-                if isinstance(v, str):
-                    v = "'%s'" % (v)
-                sqlwhere.append(str(QString("%s = %s" % (k, "%" + str(whereCounter))).arg(v)))
+                if isinstance(v, tuple):
+                    v = v[0]
+                if isinstance(v, str) or isinstance(v, QString):
+                    v = '"%s"' % (v)
+                sqlwhere.append(str(QString('%s = %s' % (k, "%" + str(whereCounter))).arg(v)))
                 whereCounter += 1
             sql += " WHERE " + " AND ".join(sqlwhere)
 
         if query.exec_(sql):
             return query.numRowsAffected()
         else:
+            print query.lastQuery()
             print query.lastError().text()
             return False
         
@@ -156,21 +165,24 @@ class Db(object):
             sqlwhere = []
             whereCounter = 1
             for k, v in sqlWhere.items():
-                if isinstance(v, str):
-                    v = "'%s'" % (v)
-                sqlwhere.append(str(QString("%s = %s" % (k, "%" + str(whereCounter))).arg(v)))
+                if isinstance(v, tuple):
+                    v = v[0]
+                if isinstance(v, str) or isinstance(v, QString):
+                    v = '"%s"' % (v)
+                print v
+                sqlwhere.append(str(QString('%s = %s' % (k, "%" + str(whereCounter))).arg(v)))
                 whereCounter += 1
             sql += " WHERE " + " AND ".join(sqlwhere)
-        
+
         if query.exec_(sql):
             return query.numRowsAffected()
         else:
+            print query.lastQuery()
             print query.lastError().text()
             return False
         
     @staticmethod
     def execute(sql):
-        
         #initiate an instance if there's none
         if Db.__db == None:
             Db.__getInstance()
@@ -180,6 +192,7 @@ class Db(object):
         if query.exec_(sql):
             return query
         else:
+            print query.lastQuery()
             print query.lastError().text()
             return False
         

@@ -17,6 +17,12 @@ class Song(object):
 
         if not id == None:
             self.updateSong()
+        
+        if isinstance(id, tuple):
+            self.__id = self.__id[0]
+            
+        if isinstance(duration, tuple):
+            self.__duration = self.__duration[0]
 
     def getId(self):
         return self.__id
@@ -133,16 +139,27 @@ class Song(object):
             self.dirty = True
         
     def __str__(self):
-
+        
+        print self.__id
+        print self.__title
+        print self.__duration
+        print self.__artist
+        print self.__album
+        print self.__genre
+        print self.__path
+        
+        print ""
+        print ""
+        
         out = ""
-        query = Db.execute("SELECT a.name as artist, al.name as album, g.name as genre FROM artists as a, albums as al, genres as g WHERE g.id = %d AND a.id = %d AND al.id = %d" % \
-                           (self.__genre, self.__artist, self.__album))
-        if query and query.next():
-            out = "ID: %d\nTitle: %s\nDuration: %d\nArtist: %s\nAlbum: %s\nGenre: %s\nPath: %s" % \
-                (self.__id, self.__title, self.__duration, query.value(0).toString(), query.value(1).toString(), query.value(2).toString(), self.__path)
-        else:
-            out = "ID: %d\nTitle: %s\nDuration: %d\nPath: %s" % \
-                (self.__id, self.__title, self.__duration, self.__path)
+        #query = Db.execute("SELECT a.name as artist, al.name as album, g.name as genre FROM artists as a, albums as al, genres as g WHERE g.id = %d AND a.id = %d AND al.id = %d" % \
+        #                   (self.__genre, self.__artist, self.__album))
+        #if query and query.next():
+        out = "ID: %d\nTitle: %s\nDuration: %d\nArtist: %s\nAlbum: %s\nGenre: %s\nPath: %s" % \
+            (self.__id, self.__title, self.__duration, self.__artist, self.__album, self.__genre, self.__path)
+        #else:
+        #    out = "ID: %d\nTitle: %s\nDuration: %d\nPath: %s" % \
+        #        (self.__id, self.__title, self.__duration, self.__path)
 
         return out
 
