@@ -19,7 +19,10 @@ class Mainwindow(QMainWindow):
                       "next":"images/next.png",
                       "previous":"images/previous.png",
                       "all_songs":"images/all_songs.png",
-                      "playlist":"images/playlist.png"}
+                      "playlist":"images/playlist.png",
+                      "media_add":"images/media_add.png",
+                      "media_remove":"images/media_remove.png",
+                      "media_edit":"images/media_edit.png"}
         
         self.sources = Songs()
 
@@ -31,6 +34,7 @@ class Mainwindow(QMainWindow):
         self.__current_sid = 0
         
         self.loadAllSongs()
+        self.loadAllPlaylists()
         
     def loadAllSongs(self):
         sql = "SELECT s.id, s.title, s.path, s.duration, a.name as artist, al.name as album, g.name as genre FROM songs as s \
@@ -50,7 +54,24 @@ class Mainwindow(QMainWindow):
                             genre=query.value(6).toString())
                 
                 self.sources.addSong(song)
-            self.displaySongs()
+            self.displayAllSongs()
+            
+    def loadAllPlaylists(self):
+        
+        self.playlist.clear()
+        allsongs = QListWidgetItem("All Songs")
+        allsongs.setIcon(QIcon(self.icons["all_songs"]))
+        self.playlist.addItem(allsongs)
+        
+        query = Db.select(sqlTable="playlists", sqlFields=["id", "name"])
+        if query:
+            while query.next():
+                playlistName = QListWidgetItem(query.value(1).toString())
+                playlistName.setIcon(QIcon(self.icons["playlist"]))
+                playlistName.setData(Qt.UserRole, query.value(0).toInt()[0])
+                self.playlist.addItem(playlistName)
+                
+        self.playlist.setCurrentRow(0)
 
     def setupHelpers(self):
         self.phelper = Playerhelper()
@@ -136,25 +157,36 @@ class Mainwindow(QMainWindow):
         #setup left pane
         self.playlist = QListWidget(self)
 
-        allsongs = QListWidgetItem("All Songs")
-        allsongs.setIcon(QIcon(self.icons["all_songs"]))
-        self.playlist.addItem(allsongs)
-
-        rammstein = QListWidgetItem("Rammstein")
-        rammstein.setIcon(QIcon(self.icons["playlist"]))
-        self.playlist.addItem(rammstein)
-
         #setup bottom control layout
         controlsLayout = QHBoxLayout()
         controlsLayout.addWidget(self.timeLcd)
         controlsLayout.addWidget(self.seekSlider)
         controlsLayout.addWidget(self.volumeSlider)
+        
+        #playlist controls
+        self.addPlaylist = QPushButton(QIcon(self.icons["media_add"]), '', self)
+        self.editPlaylist = QPushButton(QIcon(self.icons["media_edit"]), '', self)
+        self.removePlaylist = QPushButton(QIcon(self.icons["media_remove"]), '', self)
+        
+        #playlist add/remove/edit
+        playlistControlsLayout = QHBoxLayout()
+        playlistControlsLayout.addWidget(self.addPlaylist)
+        playlistControlsLayout.addWidget(self.editPlaylist)
+        playlistControlsLayout.addWidget(self.removePlaylist)
+        
+        #playlist splitter
+        playlistVertical = QVBoxLayout()
+        playlistVertical.addWidget(self.playlist)
+        playlistVertical.addLayout(playlistControlsLayout)
+        
+        leftPane = QWidget()
+        leftPane.setLayout(playlistVertical)
 
         #setup splitter panes
         self.splitter = QSplitter(self)
-        self.splitter.addWidget(self.playlist)
+        self.splitter.addWidget(leftPane)
         self.splitter.addWidget(self.musicTable)
-        self.splitter.setSizes([100, 350])
+        self.splitter.setSizes([50, 800])
 
         #setup main layout
         layout = QVBoxLayout()
@@ -167,6 +199,30 @@ class Mainwindow(QMainWindow):
 
         #setup content
         self.setCentralWidget(self.central)
+        
+    def addPlaylistAction(self):
+        playlistName, response = QInputDialog.getText(self, 'Pysawndz', 'Playlist name:')
+
+        if response:
+            Db.insert("playlists", {"name": playlistName})
+            self.loadAllPlaylists()
+            self.playlist.setCurrentRow(self.playlist.count() - 1)
+
+    def removePlaylistAction(self):
+        
+        if self.playlist.currentRow() == 0:
+            return
+
+        currentItem = self.playlist.currentItem()
+        currentData = currentItem.data(Qt.UserRole).toInt()[0]
+        
+        Db.delete("playlists", {"id": currentData})
+        Db.delete("playlist_songs", {"playlist_id": currentData})
+        self.loadAllPlaylists()
+        
+    
+    def editPlaylistAction(self):
+        pass
 
     def setupSignals(self):
         self.connect(self.importm, SIGNAL("triggered()"), self.showOpenDialog)
@@ -178,13 +234,52 @@ class Mainwindow(QMainWindow):
         self.connect(self.previousbtn, SIGNAL("triggered()"), self.movePrevious)
         self.connect(self.nextbtn, SIGNAL("triggered()"), self.moveNext)
         
+        self.connect(self.addPlaylist, SIGNAL("clicked()"), self.addPlaylistAction)
+        self.connect(self.removePlaylist, SIGNAL("clicked()"), self.removePlaylistAction)
+        self.connect(self.editPlaylist, SIGNAL("clicked()"), self.editPlaylistAction)
+        
         self.connect(self.musicTable, SIGNAL("cellDoubleClicked(int, int)"), self.cellDoubleClicked)
+        
+        self.connect(self.playlist, SIGNAL("currentRowChanged(int)"), self.playListChanged)
 
         self.connect(self.mediaObject, SIGNAL("tick(qint64)"), self.tick)
         self.connect(self.mediaObject, SIGNAL("stateChanged(Phonon::State, Phonon::State)"), self.stateChanged)
         self.connect(self.mediaObject, SIGNAL("aboutToFinish()"), self.aboutToFinish)
         self.connect(self.mediaObject, SIGNAL("currentSourceChanged(const Phonon::MediaSource &)"), self.sourceChanged);
+    
+    def clearMusicTable(self):
+        self.musicTable.clearContents()
+        rowCount = self.musicTable.rowCount() - 1
+        while (rowCount >= 0):
+            self.musicTable.removeRow(rowCount)
+            rowCount -= 1
         
+    def playListChanged(self, row):
+        
+        if not row == 0: 
+            currentRow = self.playlist.item(row)
+            currentPlaylist = currentRow.data(Qt.UserRole).toInt()[0]
+            
+            sql = "SELECT s.id, s.title, s.path, s.duration, a.name as artist, al.name as album, g.name as genre FROM songs as s \
+                    INNER JOIN artists as a ON a.id = s.artist_id \
+                    INNER JOIN albums as al ON al.id = s.album_id \
+                    INNER JOIN genres as g ON g.id = s.genre_id \
+                    INNER JOIN playlist_songs as ps ON ps.song_id = s.id \
+                    WHERE ps.playlist_id = %d \
+                    ORDER BY s.title ASC" % (currentPlaylist)
+            
+            query = Db.execute(sql)
+
+            if query and query.size() > 0:
+                while query.next():
+                    print query.value(0).toInt()[0]
+            else:
+                self.clearMusicTable()
+                
+        else:
+            #all songs
+            self.displayAllSongs()
+    
     def movePrevious(self):
         current_index = self.sources.getSongIndex(self.sources.getSong(self.__current_sid))
         previous_song = self.sources.getByIndex(current_index - 1)
@@ -277,16 +372,14 @@ class Mainwindow(QMainWindow):
         
         self.__current_sid = song.getId()
 
-    def displaySongs(self):
+    def displayAllSongs(self):
         
         #self.musicTable.clearContents()
 
         if len(self.sources) > 0:
             
             for song in self.sources:
-                
-                print str(song)
-                
+
                 sansFont = QFont("Helvetica [Cronyx]", 12);
 
                 titleItem = QTableWidgetItem(song.getTitle())
