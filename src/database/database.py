@@ -169,7 +169,6 @@ class Db(object):
                     v = v[0]
                 if isinstance(v, str) or isinstance(v, QString):
                     v = '"%s"' % (v)
-                print v
                 sqlwhere.append(str(QString('%s = %s' % (k, "%" + str(whereCounter))).arg(v)))
                 whereCounter += 1
             sql += " WHERE " + " AND ".join(sqlwhere)

@@ -6,6 +6,7 @@ from PyQt4.phonon import *
 from utils.helpers import *
 from core.songs import *
 from database.database import Db
+import pickle
 
 class Mainwindow(QMainWindow):
 
@@ -35,7 +36,72 @@ class Mainwindow(QMainWindow):
         
         self.loadAllSongs()
         self.loadAllPlaylists()
+        self.loadContextMenu()
         
+    def loadContextMenu(self):
+        #table context menu
+        self.musicTable.setContextMenuPolicy(Qt.ActionsContextMenu)
+        current_actions = self.musicTable.actions()
+        if len(current_actions) > 0:
+            for action in current_actions:
+                self.musicTable.removeAction(action)
+        for i in range(self.playlist.count()):
+            if not i == 0:
+                
+                currentItem = self.playlist.item(i)
+                currentData = currentItem.data(Qt.UserRole).toInt()[0]
+                
+                playlistContenxt = QAction("Add to %s" % (currentItem.text()), self.musicTable)
+                playlistContenxt.setData(currentData)
+                self.connect(playlistContenxt, SIGNAL("triggered()"), self.addToPlaylistAction)
+                self.musicTable.addAction(playlistContenxt)
+                
+        playlistContenxt = QAction("Delete Song", self.musicTable)
+        self.connect(playlistContenxt, SIGNAL("triggered()"), self.deleteSong)
+        self.musicTable.addAction(playlistContenxt)
+        
+    def deleteSong(self):
+        to_delete = self.musicTable.selectedItems()
+        songs_to_delete = []
+        for i in to_delete:
+            song_id = i.data(Qt.UserRole).toInt()[0]
+            if not song_id == 0:
+                songs_to_delete.append(song_id)
+                
+        if len(songs_to_delete) > 0:
+            for song_id in songs_to_delete:
+                Db.execute("DELETE FROM songs WHERE id = %d" % (song_id))
+                Db.execute("DELETE FROM playlist_songs WHERE song_id = %d" % (song_id))
+            self.sources.clear()
+            self.clearMusicTable()
+            self.loadAllSongs()
+    
+    def addToPlaylistAction(self):
+        action = self.sender()
+        playlist_id = action.data().toInt()[0]
+        
+        to_add = self.musicTable.selectedItems()
+        songs_to_add = []
+        for i in to_add:
+            song_id = i.data(Qt.UserRole).toInt()[0]
+            if not song_id == 0:
+                songs_to_add.append(song_id)
+                
+        if len(songs_to_add) > 0:
+            for song_id in songs_to_add:
+                sql = "SELECT * FROM playlist_songs WHERE song_id = %d AND playlist_id = %d" % (song_id, playlist_id)
+                query = Db.execute(sql)
+                if query.size() == 0:
+                    Db.insert("playlist_songs", {"playlist_id": playlist_id, "song_id": song_id})
+            self.playlist.setCurrentRow(self.getRowByData(playlist_id))
+
+    def getRowByData(self, playlist_id):
+        for i in range(self.playlist.count()):
+            if not i == 0:
+                currentItem = self.playlist.item(i)
+                if currentItem.data(Qt.UserRole).toInt()[0] == playlist_id:
+                    return i
+    
     def loadAllSongs(self):
         sql = "SELECT s.id, s.title, s.path, s.duration, a.name as artist, al.name as album, g.name as genre FROM songs as s \
                 INNER JOIN artists as a ON a.id = s.artist_id \
@@ -97,11 +163,18 @@ class Mainwindow(QMainWindow):
 
         self.importm = QAction("Import ...", self)
         self.importm.setShortcut("Ctrl+A")
+        
+#        self.exportm = QAction("Export ...", self)
+#        self.exportm.setShortcut("Ctrl+X")
+#        self.restorem = QAction("Restore playlist", self)
+#        self.restorem.setShortcut("Ctrl+R")
 
         self.exit = QAction("Bye!", self)
         self.exit.setShortcut("Ctrl+Q")
 
         file.addAction(self.importm)
+#        file.addAction(self.exportm)
+#        file.addAction(self.restorem)
         file.addAction(self.exit)
         self.setMenuBar(menubar)
 
@@ -204,14 +277,23 @@ class Mainwindow(QMainWindow):
         playlistName, response = QInputDialog.getText(self, 'Pysawndz', 'Playlist name:')
 
         if response:
-            Db.insert("playlists", {"name": playlistName})
-            self.loadAllPlaylists()
-            self.playlist.setCurrentRow(self.playlist.count() - 1)
+            sql = "SELECT * FROM playlists WHERE name = '%s'" % (playlistName)
+            query = Db.execute(sql)
+            if query.size() == 0:
+                Db.insert("playlists", {"name": playlistName})
+                self.loadAllPlaylists()
+                self.playlist.setCurrentRow(self.playlist.count() - 1)
+                self.loadContextMenu()
+            else:
+                QMessageBox.warning(self, "Pysawndz", "Another playlist with the same name already exist.", QMessageBox.Ok);
 
     def removePlaylistAction(self):
         
         if self.playlist.currentRow() == 0:
             return
+        
+        self.mediaObject.stop()
+        self.mediaObject.clearQueue()
 
         currentItem = self.playlist.currentItem()
         currentData = currentItem.data(Qt.UserRole).toInt()[0]
@@ -219,13 +301,31 @@ class Mainwindow(QMainWindow):
         Db.delete("playlists", {"id": currentData})
         Db.delete("playlist_songs", {"playlist_id": currentData})
         self.loadAllPlaylists()
+        self.loadContextMenu()
         
     
     def editPlaylistAction(self):
-        pass
+        targetRow = self.playlist.currentRow()
+        if targetRow == 0:
+            return
+        
+        currentItem = self.playlist.currentItem()
+        currentData = currentItem.data(Qt.UserRole).toInt()[0]
+        
+        playlistName, response = QInputDialog.getText(self, 'Pysawndz', 'New playlist name:')
+
+        if response:
+            Db.update("playlists", {"name": playlistName}, {"id": currentData})
+            self.loadAllPlaylists()
+            self.playlist.setCurrentRow(targetRow)
+            self.loadContextMenu()
 
     def setupSignals(self):
         self.connect(self.importm, SIGNAL("triggered()"), self.showOpenDialog)
+        # self.connect(self.exportm, SIGNAL("triggered()"), self.exportSongs)
+        # self.connect(self.restorem, SIGNAL("triggered()"), self.restorePlaylist)
+        #self.connect(self.musicTable.horizontalHeader(), SIGNAL("sectionClicked(int)"), self.sortColumn);
+        
         self.connect(self.exit, SIGNAL("triggered()"), self, SLOT("close()"))
         self.connect(self.playbtn, SIGNAL("triggered()"), self.mediaObject, SLOT("play()"))
         self.connect(self.stopbtn, SIGNAL("triggered()"), self.mediaObject, SLOT("stop()"))
@@ -234,19 +334,22 @@ class Mainwindow(QMainWindow):
         self.connect(self.previousbtn, SIGNAL("triggered()"), self.movePrevious)
         self.connect(self.nextbtn, SIGNAL("triggered()"), self.moveNext)
         
+        self.connect(self.playlist, SIGNAL("currentRowChanged(int)"), self.playListChanged)
         self.connect(self.addPlaylist, SIGNAL("clicked()"), self.addPlaylistAction)
         self.connect(self.removePlaylist, SIGNAL("clicked()"), self.removePlaylistAction)
         self.connect(self.editPlaylist, SIGNAL("clicked()"), self.editPlaylistAction)
         
         self.connect(self.musicTable, SIGNAL("cellDoubleClicked(int, int)"), self.cellDoubleClicked)
-        
-        self.connect(self.playlist, SIGNAL("currentRowChanged(int)"), self.playListChanged)
+        #self.connect(self.addToPlaylist, SIGNAL("triggered()"), self.addToPlaylistAction)
 
         self.connect(self.mediaObject, SIGNAL("tick(qint64)"), self.tick)
         self.connect(self.mediaObject, SIGNAL("stateChanged(Phonon::State, Phonon::State)"), self.stateChanged)
         self.connect(self.mediaObject, SIGNAL("aboutToFinish()"), self.aboutToFinish)
         self.connect(self.mediaObject, SIGNAL("currentSourceChanged(const Phonon::MediaSource &)"), self.sourceChanged);
     
+    # def sortColumn(self, colnum):
+    #     self.musicTable.sortItems(colnum, Qt.AscendingOrder)
+        
     def clearMusicTable(self):
         self.musicTable.clearContents()
         rowCount = self.musicTable.rowCount() - 1
@@ -256,8 +359,10 @@ class Mainwindow(QMainWindow):
         
     def playListChanged(self, row):
         
-        if not row == 0: 
-            currentRow = self.playlist.item(row)
+        currentRow = self.playlist.item(row)
+        
+        if not row == 0 and not currentRow == None: 
+            
             currentPlaylist = currentRow.data(Qt.UserRole).toInt()[0]
             
             sql = "SELECT s.id, s.title, s.path, s.duration, a.name as artist, al.name as album, g.name as genre FROM songs as s \
@@ -269,15 +374,27 @@ class Mainwindow(QMainWindow):
                     ORDER BY s.title ASC" % (currentPlaylist)
             
             query = Db.execute(sql)
-
             if query and query.size() > 0:
+                self.sources.clear()
                 while query.next():
-                    print query.value(0).toInt()[0]
+                    #song_id = query.value(0).toInt()[0]
+                    song = Song(id=query.value(0).toInt()[0],
+                            title=query.value(1).toString(),
+                            path=query.value(2).toString(),
+                            duration=query.value(3).toInt()[0],
+                            artist=query.value(4).toString(),
+                            album=query.value(5).toString(),
+                            genre=query.value(6).toString())
+                
+                    self.sources.addSong(song)
+                self.clearMusicTable()
+                self.displayAllSongs()
             else:
                 self.clearMusicTable()
                 
         else:
             #all songs
+            self.loadAllSongs()
             self.displayAllSongs()
     
     def movePrevious(self):
@@ -296,7 +413,44 @@ class Mainwindow(QMainWindow):
             self.setCurrentSong(next_song)
             self.musicTable.setCurrentCell(current_index + 1, 0)
             self.mediaObject.play()
+            
+    def exportSongs(self):
+        targetRow = self.playlist.currentRow()
+        if targetRow == 0:
+            return
+        
+        currentItem = self.playlist.currentItem()
+        filename = "%s/%s.songs" % (QDesktopServices.storageLocation(QDesktopServices.DesktopLocation), currentItem.text())
 
+        handle = open(filename, "wb")
+        pickle.dump(self.sources, handle, -1)
+        
+        QMessageBox.information(self, "Pysawndz",
+                                   "Backup %s.songs has successfully been written." % (currentItem.text()),
+                                   QMessageBox.Ok)
+    
+    def restorePlaylist(self):
+        filename = QFileDialog.getOpenFileName(self,
+            "Select playlist to restore",
+            QDesktopServices.storageLocation(QDesktopServices.DesktopLocation),
+            "*.songs")
+        handle = open(filename, "rb")
+        self.sources = pickle.load(handle)
+        
+        playlistName = self.phelper.getFileName(filename)
+        sql = "SELECT * FROM playlists WHERE name = '%s'" % (playlistName)
+        query = Db.execute(sql)
+        if query.size() == 0:
+            Db.insert("playlists", {"name": playlistName})
+            
+            #TODO: I forgot :)
+            
+            self.loadAllPlaylists()
+            self.playlist.setCurrentRow(self.playlist.count() - 1)
+            self.loadContextMenu()
+        else:
+            QMessageBox.warning(self, "Pysawndz", "Another playlist with the same name already exist.", QMessageBox.Ok);
+        
     def showOpenDialog(self):
         filenames = QStringList()
         filenames = QFileDialog.getOpenFileNames(self,
@@ -316,7 +470,7 @@ class Mainwindow(QMainWindow):
                 self.tempMediaObject.setCurrentSource(source)
                 metaData = self.tempMediaObject.metaData()
                 metaData = self.phelper.cmapToPyDict(metaData)
-                
+
                 if metaData["TITLE"] == "":
                     metaData["TITLE"] = self.phelper.getFileName(f)
                 
@@ -329,14 +483,14 @@ class Mainwindow(QMainWindow):
                 
                 self.sources.addSong(newSong)
 
-            self.displaySongs()
+            self.displayAllSongs()
 
     def stateChanged(self, newState, oldState):
 
         if newState == Phonon.ErrorState:
-            QMessageBox.critical(self, "Application Error",
-                                 "An unrecoverable error occured, Pysawndz will now exit.",
-                                 QMessageBox.Ok, QMessageBox.Ok)
+            #QMessageBox.critical(self, "Application Error",
+            #                     "An unrecoverable error occured, Pysawndz will now exit.",
+            #                     QMessageBox.Ok, QMessageBox.Ok)
             return
 
         if newState != Phonon.StoppedState and newState != Phonon.PausedState:
@@ -383,6 +537,7 @@ class Mainwindow(QMainWindow):
                 sansFont = QFont("Helvetica [Cronyx]", 12);
 
                 titleItem = QTableWidgetItem(song.getTitle())
+                titleItem.setData(Qt.UserRole, song.getId())
                 titleItem.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
                 titleItem.setFont(sansFont)
 
@@ -420,18 +575,17 @@ class Mainwindow(QMainWindow):
                 self.setCurrentSong(currentSong)
 
     def aboutToFinish(self):
-        #source = self.mediaObject.currentSource()
-        
         current_song = self.sources.getSong(self.__current_sid)
         current_index = self.sources.getSongIndex(current_song)
 
         if (current_index + 1) < len(self.sources):
+            
             next_song = self.sources.getByIndex(current_index + 1)
+            self.__current_sid = next_song.getId()
             source = Phonon.MediaSource(next_song.getPath())
             self.mediaObject.enqueue(source)
 
     def sourceChanged(self, source):
-        print "source changed"
 
         newSong = self.sources.getSongByPath(source.fileName())
         if newSong:
@@ -441,7 +595,6 @@ class Mainwindow(QMainWindow):
         self.timeLcd.display("00:00")
 
     def cellDoubleClicked(self, row, column):
-        print "cell doubleclicked"
         self.mediaObject.stop()
         self.mediaObject.clearQueue()
         song = self.sources.getByIndex(row)

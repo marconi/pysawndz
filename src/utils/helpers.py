@@ -9,7 +9,7 @@ class Playerhelper:
             for k, v in cmap.items():
                 newDict[str(k)] = str(v[0])
             return newDict
-        return False
+        return {"TITLE":"", "ALBUM":"", "ARTIST":"", "GENRE":""}
     
     def getFileName(self, filePath):
         fileName = QString(basename(str(filePath)))

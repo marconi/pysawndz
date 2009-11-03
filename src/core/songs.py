@@ -66,6 +66,12 @@ class Songs(object):
             if path == song.getPath():
                 return song
         return False
+    
+    def clear(self):
+        self.songs = []
+        
+    def size(self):
+        return len(self.songs)
 
 if __name__ == "__main__":
     #testsuite
